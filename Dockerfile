@@ -3,7 +3,7 @@ WORKDIR /usr/src/signer
 COPY . .
 RUN cargo install --path .
 
-FROM debian:buster-slim
+FROM ubuntu:focal-20210827
 COPY --from=builder /usr/local/cargo/bin/signer /usr/local/bin/signer
 COPY docker_entrypoint.sh /docker_entrypoint.sh
 RUN chmod +x /docker_entrypoint.sh
