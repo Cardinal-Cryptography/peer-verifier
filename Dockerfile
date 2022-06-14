@@ -1,9 +1,12 @@
-FROM ubuntu:focal-20210827
+FROM rust:1.61 as builder
+WORKDIR /usr/src/signer
+COPY . .
+RUN cargo install --path .
 
-COPY target/release/signer /usr/local/bin
-RUN chmod +x /usr/local/bin/signer
-
+FROM debian:buster-slim
+COPY --from=builder /usr/local/cargo/bin/signer /usr/local/bin/signer
 COPY docker_entrypoint.sh /docker_entrypoint.sh
 RUN chmod +x /docker_entrypoint.sh
 
 ENTRYPOINT ["./docker_entrypoint.sh"]
+
