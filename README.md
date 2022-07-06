@@ -16,21 +16,29 @@ For whole process to work they also need to have a node set up with up to date b
 To generate signature:
 ```console
 $ signer --message "secret message" --p2p-secret-path "some_path_to_p2p_secret/p2p_secret"
-Public key: 08011220c94d0593359ea30451f3aaf61040756c1bfdb7bb779489d4dafda00cce038c0a
-Signed message: 7ef2490075425bcd9fc77a994069183a21746f0be3561d464ae6a89e4b9bdaf26d9cb75c0b11325ae54e66c8ce8a9156a8b8e1d0120309fafe6971db53d6c104
+Peer id: 12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt
+Public key: 08011220f542fa114217121d8d264e52da8c3b2a9363d963e8a37fff058046ddff004655
+Signed message: 2160edeec7c777f4e7fea1ddfa6040c7fa937db5d1d691878c0083c4e2e28e5d720c06006afec6a1eeb150c25f7ca7fca7567a3c07823f781065bb8b5a8eeb0f
 ```
 Or, alternatively, using cargo, if for some reason the pre-built binary is unavailable:
 ```console
 $ cargo run --bin signer -- --message "secret message" --p2p-secret-path "some_path_to_p2p_secret/p2p_secret"
-Public key: 08011220c94d0593359ea30451f3aaf61040756c1bfdb7bb779489d4dafda00cce038c0a
-Signed message: 7ef2490075425bcd9fc77a994069183a21746f0be3561d464ae6a89e4b9bdaf26d9cb75c0b11325ae54e66c8ce8a9156a8b8e1d0120309fafe6971db53d6c104
+Peer id: 12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt
+Public key: 08011220f542fa114217121d8d264e52da8c3b2a9363d963e8a37fff058046ddff004655
+Signed message: 2160edeec7c777f4e7fea1ddfa6040c7fa937db5d1d691878c0083c4e2e28e5d720c06006afec6a1eeb150c25f7ca7fca7567a3c07823f781065bb8b5a8eeb0f
 ```
-After that candidate needs to send the generated public key and signature to Aleph Zero team.
+Available arguments:
+*  `--p2p-secret-path` path to p2p secret that is used for signing.
+* `--message` secret message that candidate should sign. This argument is optional. If not provided signer will sign peer_id generated from p2p_secret.
+
+After generating signature candidate needs to send peer id, the generated public key and signature to Aleph Zero team.
 So in this case one would send the following:
 ```
-08011220c94d0593359ea30451f3aaf61040756c1bfdb7bb779489d4dafda00cce038c0a
+12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt
 
-7ef2490075425bcd9fc77a994069183a21746f0be3561d464ae6a89e4b9bdaf26d9cb75c0b11325ae54e66c8ce8a9156a8b8e1d0120309fafe6971db53d6c104
+08011220f542fa114217121d8d264e52da8c3b2a9363d963e8a37fff058046ddff004655
+
+2160edeec7c777f4e7fea1ddfa6040c7fa937db5d1d691878c0083c4e2e28e5d720c06006afec6a1eeb150c25f7ca7fca7567a3c07823f781065bb8b5a8eeb0f
 ```
 
 ## Step two: verification by Aleph Zero Team
@@ -40,13 +48,13 @@ This node needs to be up to date with block creation.
 Also for this process to work we need to have candidate in our peers, so to make sure we connected, we can add it to bootnodes of our node.
 Now we call `verifier` to verify peer and the signature:
 ```console
-$ verifier --node "http://127.0.0.1:9933" --block-difference=10 --peer-id "12D3KooWPNAEZ9Xru6SgaKoXj4XGeDeVbUjYQHoc3DXpHJ9eeQeM" --message "secret message" --public-key 08011220c94d0593359ea30451f3aaf61040756c1bfdb7bb779489d4dafda00cce038c0a --signature 7ef2490075425bcd9fc77a994069183a21746f0be3561d464ae6a89e4b9bdaf26d9cb75c0b11325ae54e66c8ce8a9156a8b8e1d0120309fafe6971db53d6c104
-Signature for peer 12D3KooWPNAEZ9Xru6SgaKoXj4XGeDeVbUjYQHoc3DXpHJ9eeQeM is correct and peer is up to date with block creation at 1386065
+$ verifier --node "http://127.0.0.1:9933" --block-difference=10 --peer-id "12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt" --message "secret message" --public-key 08011220f542fa114217121d8d264e52da8c3b2a9363d963e8a37fff058046ddff004655 --signature 2160edeec7c777f4e7fea1ddfa6040c7fa937db5d1d691878c0083c4e2e28e5d720c06006afec6a1eeb150c25f7ca7fca7567a3c07823f781065bb8b5a8eeb0f
+Signature for peer 12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt is correct and peer is up to date with block creation at 1386065
 ```
 Or, alternatively, using cargo, if for some reason the pre-built binary is unavailable:
 ```console
-$ cargo run --bin verifier -- --node "http://127.0.0.1:9933" --block-difference=10 --peer-id "12D3KooWPNAEZ9Xru6SgaKoXj4XGeDeVbUjYQHoc3DXpHJ9eeQeM" --message "secret message" --public-key 08011220c94d0593359ea30451f3aaf61040756c1bfdb7bb779489d4dafda00cce038c0a --signature 7ef2490075425bcd9fc77a994069183a21746f0be3561d464ae6a89e4b9bdaf26d9cb75c0b11325ae54e66c8ce8a9156a8b8e1d0120309fafe6971db53d6c104
-Signature for peer 12D3KooWPNAEZ9Xru6SgaKoXj4XGeDeVbUjYQHoc3DXpHJ9eeQeM is correct and peer is up to date with block creation at 1386065
+$ cargo run --bin verifier -- --node "http://127.0.0.1:9933" --block-difference=10 --peer-id "12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt" --message "secret message" --public-key 08011220f542fa114217121d8d264e52da8c3b2a9363d963e8a37fff058046ddff004655 --signature 2160edeec7c777f4e7fea1ddfa6040c7fa937db5d1d691878c0083c4e2e28e5d720c06006afec6a1eeb150c25f7ca7fca7567a3c07823f781065bb8b5a8eeb0f
+Signature for peer 12D3KooWSKmHjpGhJuuR4tasDErtDVq4PQTzecbpDNeQQqyRfHEt is correct and peer is up to date with block creation at 1386065
 ```
 
 Available arguments:

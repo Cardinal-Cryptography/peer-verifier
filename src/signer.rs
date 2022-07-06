@@ -5,9 +5,10 @@ use std::{fs, path::Path};
 #[derive(Debug, Parser)]
 #[clap(version = "1.0")]
 pub struct Config {
-    /// Message we want to sign.
+    /// Message we want to sign. Parameter is optional.
+    /// If not provided signer will sign peer_id generated from p2p_secret
     #[clap(long)]
-    pub message: String,
+    pub message: Option<String>,
 
     /// Path to p2p secret.
     #[clap(long)]
@@ -40,13 +41,14 @@ fn main() {
 
     let keypair = libp2p_ed25519::Keypair::from(secret_key);
     let public = PublicKey::Ed25519(keypair.public());
-
+    println!("Peer id: {}", public.to_peer_id());
     println!(
         "Public key: {}",
         hex::encode(&public.to_protobuf_encoding())
     );
+    let to_sign = message.unwrap_or_else(|| public.to_peer_id().to_string());
     println!(
         "Signed message: {}",
-        hex::encode(&keypair.sign(message.as_bytes()))
+        hex::encode(&keypair.sign(to_sign.as_bytes()))
     );
 }
