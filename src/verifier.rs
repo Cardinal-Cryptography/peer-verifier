@@ -3,7 +3,7 @@ use libp2p::{identity::PublicKey, PeerId};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{str::FromStr, u64};
+use std::{collections::HashMap, str::FromStr, u64};
 
 type BlockNumber = u64;
 
@@ -71,6 +71,26 @@ struct PeerState {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+struct NetworkState {
+    not_connected_peers: HashMap<String, NotConnectedPeer>,
+    connected_peers: HashMap<String, ConnectedPeer>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct ConnectedPeer {
+    version_string: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct NotConnectedPeer {
+    known_addresses: Vec<String>,
+    version_string: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct BlockHeader {
     number: String,
 }
@@ -84,6 +104,11 @@ impl BlockHeader {
 
 async fn get_connected_peers(client: &Client, node: &str) -> Vec<PeerState> {
     let req = construct_json_body("system_peers", Value::Null);
+    make_request_and_parse_result(client, node, req).await
+}
+
+async fn get_network_state(client: &Client, node: &str) -> NetworkState {
+    let req = construct_json_body("system_unstable_networkState", Value::Null);
     make_request_and_parse_result(client, node, req).await
 }
 
@@ -124,30 +149,58 @@ async fn main() {
     let client = Client::new();
     let connected_peers = get_connected_peers(&client, &node).await;
     let best_block_header = get_best_block_header(&client, &node).await;
+    let network_state = get_network_state(&client, &node).await;
 
     let best_number = best_block_header.number().unwrap();
 
-    let peer = connected_peers
+    if let Some(peer) = connected_peers
         .iter()
         .find(|r| r.peer_id == peer_id.to_string())
-        .unwrap_or_else(|| panic!("No peer with peer id {:?} connected", peer_id));
+    {
+        assert!(
+            best_number <= peer.best_number + block_difference,
+            "Peer is not up to date. Should have {:?} block number. Has {:?} block number",
+            best_number,
+            peer.best_number
+        );
 
-    assert!(
-        best_number <= peer.best_number + block_difference,
-        "Peer is not up to date. Should have {:?} block number. Has {:?} block number",
-        best_number,
-        peer.best_number
-    );
+        assert!(
+            peer.best_number <= best_number + block_difference,
+            "Peer is too far in the future. Should have {:?} block number. Has {:?} block number",
+            best_number,
+            peer.best_number
+        );
 
-    assert!(
-        peer.best_number <= best_number + block_difference,
-        "Peer is too far in the future. Should have {:?} block number. Has {:?} block number",
-        best_number,
-        peer.best_number
-    );
-
-    println!(
-        "Signature for peer {} is correct and peer is up to date with block creation at {:?}",
-        peer_id, best_number
-    );
+        println!(
+            "Signature for peer {} is correct and peer is up to date with block creation at {:?}",
+            peer_id, peer.best_number
+        );
+        println!(
+            "Node version is {:?}",
+            network_state
+                .connected_peers
+                .get(&peer_id.to_string())
+                .expect("Peer is connected")
+                .version_string
+                .as_ref()
+                .unwrap_or(&String::from("Unknown"))
+        );
+    } else if let Some(not_connected_peer) =
+        network_state.not_connected_peers.get(&peer_id.to_string())
+    {
+        println!(
+            "Peer {} exists in network but is not connected to us.",
+            peer_id
+        );
+        println!("Known addresses: {:?}", not_connected_peer.known_addresses);
+        println!(
+            "Node version: {:?}",
+            not_connected_peer
+                .version_string
+                .as_ref()
+                .unwrap_or(&String::from("Unknown"))
+        );
+    } else {
+        panic!("No peer with peer id {} connected", peer_id);
+    }
 }
