@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use libp2p::{identity::PublicKey, PeerId};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -7,32 +7,46 @@ use std::{collections::HashMap, str::FromStr, u64};
 
 type BlockNumber = u64;
 
+#[derive(Debug, Clone, Subcommand)]
+pub enum Command {
+    VerifySignature {
+        /// Peer Id of the peer we want to verify.
+        #[clap(long)]
+        peer_id: String,
+
+        /// Message that the signature of we want to check.
+        #[clap(long)]
+        message: String,
+
+        /// Hex encoded public key of the peer.
+        #[clap(long)]
+        public_key: String,
+
+        /// Signature we want to check.
+        #[clap(long)]
+        signature: String,
+    },
+    VerifyConnection {
+        /// Peer Id of the peer we want to verify.
+        #[clap(long)]
+        peer_id: String,
+
+        /// Node to ask for network state
+        #[clap(long, default_value = "http://127.0.0.1:9933")]
+        node: String,
+
+        /// Max block difference with head.
+        #[clap(long, default_value = "10")]
+        block_difference: BlockNumber,
+    },
+}
+
 #[derive(Debug, Parser)]
-#[clap(version = "1.0")]
+#[clap(version = "1.0", subcommand_negates_reqs(true))]
 pub struct Config {
-    // Node to ask for network state
-    #[clap(long, default_value = "http://127.0.0.1:9933")]
-    pub node: String,
-
-    /// Peer Id of the peer we want to verify.
-    #[clap(long)]
-    pub peer_id: String,
-
-    /// Message that the signature of we want to check.
-    #[clap(long)]
-    pub message: String,
-
-    /// Hex encoded public key of the peer.
-    #[clap(long)]
-    pub public_key: String,
-
-    /// Signature we want to check.
-    #[clap(long)]
-    pub signature: String,
-
-    /// Max block difference with head.
-    #[clap(long, default_value = "10")]
-    pub block_difference: BlockNumber,
+    /// Subcommand to call instead of whole verification process
+    #[clap(subcommand)]
+    pub subcommand: Command,
 }
 
 async fn make_request_and_parse_result<T: serde::de::DeserializeOwned>(
@@ -119,88 +133,101 @@ async fn get_best_block_header(client: &Client, node: &str) -> BlockHeader {
 
 #[tokio::main]
 async fn main() {
-    let Config {
-        node,
-        peer_id,
-        message,
-        public_key,
-        signature,
-        block_difference,
-    } = Config::parse();
+    let Config { subcommand } = Config::parse();
+    match subcommand {
+        Command::VerifySignature {
+            peer_id,
+            message,
+            public_key,
+            signature,
+        } => {
+            let peer_id = PeerId::from_str(&peer_id).unwrap();
+            let public_key = PublicKey::from_protobuf_encoding(
+                &hex::decode(public_key).expect("Could not decode public key from hex encoding"),
+            )
+            .expect("Could not decode public key from protobuf encoding");
+            let signature = hex::decode(signature).unwrap();
+            assert_eq!(
+                public_key.to_peer_id(),
+                peer_id,
+                "Supplied public key inconsistent with peer id"
+            );
+            assert!(
+                public_key.verify(message.as_bytes(), &signature),
+                "Supplied signature is incorrect"
+            );
+            println!("Signature for peer {} is correct", peer_id);
+            std::process::exit(0);
+        }
+        Command::VerifyConnection {
+            peer_id,
+            node,
+            block_difference,
+        } => {
+            let peer_id = PeerId::from_str(&peer_id).unwrap();
+            let client = Client::new();
+            let connected_peers = get_connected_peers(&client, &node).await;
+            let best_block_header = get_best_block_header(&client, &node).await;
+            let network_state = get_network_state(&client, &node).await;
 
-    let peer_id = PeerId::from_str(&peer_id).unwrap();
+            let best_number = best_block_header.number().unwrap();
+            // let best_number = connected_peers.iter().map(|p| p.best_number).max().unwrap();
+            if let Some(peer) = connected_peers
+                .iter()
+                .find(|r| r.peer_id == peer_id.to_string())
+            {
+                if best_number > peer.best_number + block_difference {
+                    println!("Connected in past {:?} {:?}", best_number, peer.best_number);
+                    println!(
+                        "NOT GOOD: Peer is not up to date. Should have {:?} block number. Has {:?} block number",
+                        best_number,
+                        peer.best_number
+                    );
+                } else if peer.best_number > best_number + block_difference {
+                    println!(
+                        "Connected in future {:?} {:?}",
+                        best_number, peer.best_number
+                    );
+                    println!(
+                        "NOT GOOD: Peer is too far in the future. Should have {:?} block number. Has {:?} block number",
+                        best_number,
+                        peer.best_number
+                    );
+                } else {
+                    println!(
+                        "Peer {} is up to date with block creation at {:?}",
+                        peer_id, peer.best_number
+                    );
+                }
 
-    let public_key = PublicKey::from_protobuf_encoding(
-        &hex::decode(public_key).expect("Could not decode public key from hex encoding"),
-    )
-    .expect("Could not decode public key from protobuf encoding");
-    let signature = hex::decode(signature).unwrap();
-
-    assert_eq!(
-        public_key.to_peer_id(),
-        peer_id,
-        "Supplied public key inconsistent with peer id"
-    );
-    assert!(
-        public_key.verify(message.as_bytes(), &signature),
-        "Supplied signature is incorrect"
-    );
-
-    let client = Client::new();
-    let connected_peers = get_connected_peers(&client, &node).await;
-    let best_block_header = get_best_block_header(&client, &node).await;
-    let network_state = get_network_state(&client, &node).await;
-
-    let best_number = best_block_header.number().unwrap();
-
-    if let Some(peer) = connected_peers
-        .iter()
-        .find(|r| r.peer_id == peer_id.to_string())
-    {
-        assert!(
-            best_number <= peer.best_number + block_difference,
-            "Peer is not up to date. Should have {:?} block number. Has {:?} block number",
-            best_number,
-            peer.best_number
-        );
-
-        assert!(
-            peer.best_number <= best_number + block_difference,
-            "Peer is too far in the future. Should have {:?} block number. Has {:?} block number",
-            best_number,
-            peer.best_number
-        );
-
-        println!(
-            "Signature for peer {} is correct and peer is up to date with block creation at {:?}",
-            peer_id, peer.best_number
-        );
-        println!(
-            "Node version is {:?}",
-            network_state
-                .connected_peers
-                .get(&peer_id.to_string())
-                .expect("Peer is connected")
-                .version_string
-                .as_ref()
-                .unwrap_or(&String::from("Unknown"))
-        );
-    } else if let Some(not_connected_peer) =
-        network_state.not_connected_peers.get(&peer_id.to_string())
-    {
-        println!(
-            "Peer {} exists in network but is not connected to us.",
-            peer_id
-        );
-        println!("Known addresses: {:?}", not_connected_peer.known_addresses);
-        println!(
-            "Node version: {:?}",
-            not_connected_peer
-                .version_string
-                .as_ref()
-                .unwrap_or(&String::from("Unknown"))
-        );
-    } else {
-        panic!("No peer with peer id {} connected", peer_id);
+                println!(
+                    "Node version is {:?}",
+                    network_state
+                        .connected_peers
+                        .get(&peer_id.to_string())
+                        .expect("Peer is connected")
+                        .version_string
+                        .as_ref()
+                        .unwrap_or(&String::from("Unknown"))
+                );
+            } else if let Some(not_connected_peer) =
+                network_state.not_connected_peers.get(&peer_id.to_string())
+            {
+                println!(
+                    "Peer {} exists in network but is not connected to us.",
+                    peer_id
+                );
+                println!("Known addresses: {:?}", not_connected_peer.known_addresses);
+                println!(
+                    "Node version: {:?}",
+                    not_connected_peer
+                        .version_string
+                        .as_ref()
+                        .unwrap_or(&String::from("Unknown"))
+                );
+            } else {
+                panic!("No peer with peer id {} connected", peer_id);
+            }
+        }
     }
 }
